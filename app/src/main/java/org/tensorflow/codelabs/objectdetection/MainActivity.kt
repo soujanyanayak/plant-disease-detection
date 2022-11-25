@@ -31,6 +31,7 @@ import android.widget.ImageView
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.FileProvider
+import androidx.core.view.isVisible
 import androidx.exifinterface.media.ExifInterface
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
@@ -38,12 +39,14 @@ import kotlinx.coroutines.launch
 import org.tensorflow.lite.support.image.TensorImage
 import org.tensorflow.lite.task.vision.detector.Detection
 import org.tensorflow.lite.task.vision.detector.ObjectDetector
+import java.io.Console
 import java.io.File
 import java.io.IOException
 import java.text.SimpleDateFormat
 import java.util.*
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.roundToInt
 
 class MainActivity : AppCompatActivity(), View.OnClickListener {
     companion object {
@@ -58,6 +61,7 @@ class MainActivity : AppCompatActivity(), View.OnClickListener {
     private lateinit var imgSampleTwo: ImageView
     private lateinit var imgSampleThree: ImageView
     private lateinit var tvPlaceholder: TextView
+    private lateinit var infection: TextView
     private lateinit var currentPhotoPath: String
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -70,6 +74,7 @@ class MainActivity : AppCompatActivity(), View.OnClickListener {
         imgSampleTwo = findViewById(R.id.imgSampleTwo)
         imgSampleThree = findViewById(R.id.imgSampleThree)
         tvPlaceholder = findViewById(R.id.tvPlaceholder)
+        infection = findViewById(R.id.tvDescription)
 
         captureImageFab.setOnClickListener(this)
         imgSampleOne.setOnClickListener(this)
@@ -117,6 +122,7 @@ class MainActivity : AppCompatActivity(), View.OnClickListener {
      */
     private fun runObjectDetection(bitmap: Bitmap) {
         // Step 1: Create TFLite's TensorImage object
+
         val image = TensorImage.fromBitmap(bitmap)
 
         // Step 2: Initialize the detector object
@@ -126,7 +132,7 @@ class MainActivity : AppCompatActivity(), View.OnClickListener {
                 .build()
         val detector = ObjectDetector.createFromFileAndOptions(
                 this,
-                "model.tflite",
+                "disease_model.tflite",
                 options
         )
         val leaf_detector = ObjectDetector.createFromFileAndOptions(
@@ -159,9 +165,16 @@ class MainActivity : AppCompatActivity(), View.OnClickListener {
         }
         //val final_result = resultToDisplay + leafResult
         // Draw the detection result on the bitmap and show it.
-        val imgWithResult = drawDetectionResult(bitmap, resultToDisplay,leafResult)
+        val (imgWithResult,percentage) = drawDetectionResult(bitmap, resultToDisplay,leafResult)
         runOnUiThread {
+
             inputImageView.setImageBitmap(imgWithResult)
+            imgSampleOne.visibility = View.GONE;
+            imgSampleTwo.visibility = View.GONE;
+            imgSampleThree.visibility = View.GONE;
+            var area =  (percentage * 100.0).roundToInt() / 100.0;
+            infection.text = "Infection : "+ area.toString();
+
         }
     }
 
@@ -176,6 +189,8 @@ class MainActivity : AppCompatActivity(), View.OnClickListener {
 
             Log.d(TAG, "Detected object: ${i} ")
             Log.d(TAG, "  boundingBox: (${box.left}, ${box.top}) - (${box.right},${box.bottom})")
+            println("Box dimensions")
+            println(box.top)
 
             for ((j, category) in obj.categories.withIndex()) {
                 Log.d(TAG, "    Label $j: ${category.label}")
@@ -215,8 +230,12 @@ class MainActivity : AppCompatActivity(), View.OnClickListener {
 
             BitmapFactory.decodeFile(currentPhotoPath, this)
 
-            val photoW: Int = outWidth
-            val photoH: Int = outHeight
+//            val photoW: Int = outWidth
+//            val photoH: Int = outHeight
+
+            val photoW: Int = 400
+            val photoH: Int = 400
+
 
             // Determine how much to scale down the image
             val scaleFactor: Int = max(1, min(photoW / targetW, photoH / targetH))
@@ -328,11 +347,13 @@ class MainActivity : AppCompatActivity(), View.OnClickListener {
         bitmap: Bitmap,
         detectionResults: List<DetectionResult>,
         leafResults: List<DetectionResult>
-    ): Bitmap {
+    ): Pair <Bitmap, Double> {
         val outputBitmap = bitmap.copy(Bitmap.Config.ARGB_8888, true)
         val canvas = Canvas(outputBitmap)
         val pen = Paint()
         pen.textAlign = Paint.Align.LEFT
+
+        var disease_area = 0.0
 
         detectionResults.forEach {
             // draw bounding box
@@ -354,6 +375,8 @@ class MainActivity : AppCompatActivity(), View.OnClickListener {
             pen.getTextBounds(it.text, 0, it.text.length, tagSize)
             val fontSize: Float = pen.textSize * box.width() / tagSize.width()
 
+            disease_area=disease_area+(box.width()*box.height())
+
             // adjust the font size so texts are inside the bounding box
             if (fontSize < pen.textSize) pen.textSize = fontSize
 
@@ -364,6 +387,7 @@ class MainActivity : AppCompatActivity(), View.OnClickListener {
                 box.top + tagSize.height().times(1F), pen
             )
         }
+        var leaf_area = 0.0
 
         leafResults.forEach {
             // draw bounding box
@@ -372,6 +396,9 @@ class MainActivity : AppCompatActivity(), View.OnClickListener {
             pen.style = Paint.Style.STROKE
             val box = it.boundingBox
             canvas.drawRect(box, pen)
+            println("Area")
+            println(box.width()*box.height())
+            leaf_area=leaf_area + (box.width()*box.height())
 
 
             val tagSize = Rect(0, 0, 0, 0)
@@ -395,7 +422,9 @@ class MainActivity : AppCompatActivity(), View.OnClickListener {
                 box.top + tagSize.height().times(1F), pen
             )
         }
-        return outputBitmap
+
+        return Pair(outputBitmap,(disease_area*100/leaf_area))
+//        return outputBitmap
     }
 }
 
