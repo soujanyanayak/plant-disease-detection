@@ -1,0 +1,6 @@
+<resources>
+    <string name="app_name">Easy Farming</string>
+    <string name="tv_take_photo">Take photo</string>
+    <string name="tv_description">Select a sample image or take a new photo</string>
+    <string name="tv_placeholder">Disease Detection</string>
+</resources>
